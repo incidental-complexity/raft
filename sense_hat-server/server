@@ -1,0 +1,34 @@
+#!/usr/bin/python
+
+import socket
+import sys
+from sense_hat import SenseHat
+
+sense = SenseHat()
+
+UDP_IP = sys.argv[1]
+UDP_PORT = int(sys.argv[2])
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+sock.bind((UDP_IP, UDP_PORT))
+
+print("start sense_hat udp server on %s:%s\n" % (UDP_IP, UDP_PORT));
+
+while True:
+    data, addr = sock.recvfrom(128) # don't need a large buffer
+    if data == "clear\n":
+        sense.clear(0, 0, 0)
+    elif data == "quit\n": 
+        sense.clear(0, 0, 0)
+        print("quitting sense_hat server...")
+        quit()
+    else: 
+        parts = data.split(",")
+        x = int(parts[0])
+        y = int(parts[1])
+        r = int(parts[2])
+        g = int(parts[3])
+        b = int(parts[4])
+        blink = not(int(parts[5]) == 0)
+        print("(%d, %d) [%d %d %d] %s" % (x, y, r, g, b, blink))
+        sense.set_pixel(x, y, r, g, b)
