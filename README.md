@@ -45,33 +45,41 @@ CMD [1, 2, 3]
 ```
 
 #### RequestVote
-Example:
+Example (note last_position is an array of `[index, term]`:
 ```
-REQ xxx
+REQ {"term":1,"candidate":"127.0.0.4:10001","last_position":[0,0]}
 ```
 
 #### VoteResponse
 Example:
 ```
-VOT xxx
+VOT {"term":1,"voter":"127.0.0.3:10001","candidate":"127.0.0.4:10001","vote":"Grant"}
 ```
 
 #### AppendEntries
 Example:
+* Note that previous_position is `[index, term]` and position is `[index, term]`
+* Note that the command in change state is our color command, and looks like `[r,g,b]`
 ```
-APP xxx
+APP {"term":1,"leader":"127.0.0.4:10001","previous_position":[0,0],"commit_index":0,"entries":[{"position":[1,1],"payload":{"Heartbeat":"127.0.0.4:10001"}},{"position":[2,1],"payload":{"ChangeState":[1,2,3]}}]}
 ```
 
 #### AppendAck
+```
+ACK [sender,[new_latest_index,new_latest_term]]
+```
 Example:
 ```
-ACK xxx
+ACK ["127.0.0.3:10001",[2,1]]
 ```
 
 #### AppendNack
+```
+NCK [term_of_sender, prev_index_from_append_msg, sender]
+```
 Example:
 ```
-NCK xxx
+NCK [2, 1, "127.0.0.3:10001"]
 ```
 
 # Discovery
