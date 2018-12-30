@@ -16,18 +16,66 @@ Unless otherwise specified, everything in this repository is covered by the MIT 
 The LED server will listen to UDP messages in the form of:
 
 ```
-1,2,3,4,5,0
+pixel 1,2,3,4,5
 ```
 
-which will set pixel `(1,2)` to `[r,b,g]` value `[3,4,5]` with "blink" set to 0.  Blink will be set to 1 for the leader to make it obvious that there is a single leader.
+which will set pixel `(1,2)` to `[r,b,g]` value `[3,4,5]`.
+
+Leaders will be indicated by a stripe on the top of the sense hat of length equal to the leader id:
+```
+###xxxxx
+xxxxxxxx
+xxxxxxxx
+xxxxxxxx
+xxxxxxxx
+xxxxxxxx
+xxxxxxxx
+xxxxxxxx
+```
+
+Indicates that node 3 is the leader.
 
 ## Inter-cluster messages
-The Raft participants can send messages to each other with the following format:
+The Raft participants can send messages to each other with the following format, which is generally JSON preceded by a verb:
 
-TBD
+#### Command
+Set color to `(r,g,b)=(1,2,3)`:
+```
+CMD [1, 2, 3]
+```
+
+#### RequestVote
+Example:
+```
+REQ xxx
+```
+
+#### VoteResponse
+Example:
+```
+VOT xxx
+```
+
+#### AppendEntries
+Example:
+```
+APP xxx
+```
+
+#### AppendAck
+Example:
+```
+ACK xxx
+```
+
+#### AppendNack
+Example:
+```
+NCK xxx
+```
 
 # Discovery
-Initially the participants will find each other via a hard-coded port range: `[9900-9963]`.  Participants will know their ip and port at startup and guess everyone else's.  They will assume the same ip address for their peers as for themselves.
+Initially the participants will find each other via a hard-coded list.  Participants will know their ip and port and their peers at startup.
 
 # Advanced
 
