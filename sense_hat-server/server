@@ -14,13 +14,10 @@ sock.bind((UDP_IP, UDP_PORT))
 
 print("start sense_hat udp server on %s:%s\n" % (UDP_IP, UDP_PORT));
 
-generation = 0
-
 # commands are:
 # quit : kills the server
 # clear : clears all pixels
-# 1,2,3,4,5 : # sets pixel (1,2) to [r, g, b] value [3, 4, 5]
-# stripe,3,4 : # sets a stripe of length 3 for generation 4 iff the current gen < 4
+# pixel 1,2,3,4,5 : # sets pixel (1,2) to [r, g, b] value [3, 4, 5]
 
 while True:
     data, addr = sock.recvfrom(128) # don't need a large buffer
@@ -30,27 +27,13 @@ while True:
         sense.clear(0, 0, 0)
         print("quitting sense_hat server...")
         quit()
-    elif data.startswith("stripe,"):
-        parts = data.split(",")
-        stripe_len = int(parts[1])
-        stripe_gen = int(parts[2])
-        if stripe_gen > generation:
-            generation = stripe_gen
-
-            # draw a stripe across the top, wiping whatever was previously there
-            for x in range(0,8):
-                if x < stripe_len:
-                    # dimmer color: less blinding to look at
-                    sense.set_pixel(x, 0, 64, 64, 64)
-                else:
-                    sense.set_pixel(x, 0, 0, 0, 0)
-    else: 
-        parts = data.split(",")
+    elif data.startswith("pixel "):
+        outer_parts = data.split(" ")
+        parts = outer_parts[1].split(",")
         x = int(parts[0])
         y = int(parts[1])
         r = int(parts[2])
         g = int(parts[3])
         b = int(parts[4])
-        blink = not(int(parts[5]) == 0)
-        print("(%d, %d) [%d %d %d] %s" % (x, y, r, g, b, blink))
+        print("(%d, %d) [%d %d %d]" % (x, y, r, g, b))
         sense.set_pixel(x, y, r, g, b)
