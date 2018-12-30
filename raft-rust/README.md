@@ -1,6 +1,7 @@
 === TODOs ===
 ==== High Level ====
 * Move these to issue tracker
+* This performs relatively well on my mac, but like crap on my pi.  Connections are stalled/refused constantly and this leads to clients being unable to communicate to servers, server messages delaying to each other by 20 seconds or more, and frequent reelection.  This is a partial failure, as some messages are indeed getting through.
 * Log Compaction/Snapshotting
 * Membership Changes
 * Durable Journal
