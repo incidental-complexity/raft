@@ -9,9 +9,9 @@ use std::sync::Mutex;
 use std::time::Instant;
 
 use crate::network::Network;
-use crate::raft::membership::Endpoint;
 use crate::raft::message;
 use crate::raft::message::Message;
+use crate::raft::membership::Address;
 
 // Interesting implementation note.  Sender and Receiver are Send but not Sync.
 // So if InMemoryNetwork is going to be shared across threads (e.g. for register),
@@ -20,9 +20,9 @@ use crate::raft::message::Message;
 // lock (Mutex or RwLock), or InMemoryNetwork cannot be shared across threads (e.g.
 // can't be shared by wrapping in an Arc then cloned).
 pub struct InMemoryNetwork<Cmd> {
-    from_members: Mutex<HashMap<Endpoint, Receiver<Message<Cmd>>>>,
-    to_members: Mutex<HashMap<Endpoint, Sender<message::Contents<Cmd>>>>,
-    blocked: Mutex<HashSet<Endpoint>>,
+    from_members: Mutex<HashMap<Address, Receiver<Message<Cmd>>>>,
+    to_members: Mutex<HashMap<Address, Sender<message::Contents<Cmd>>>>,
+    blocked: Mutex<HashSet<Address>>,
     start: Instant,
 }
 
@@ -74,11 +74,11 @@ where Cmd: Debug {
     }
 
 
-    pub fn block(&self, endpoint: Endpoint) {
+    pub fn block(&self, endpoint: Address) {
         self.blocked.lock().unwrap().insert(endpoint);
     }
 
-    pub fn unblock(&self, endpoint: Endpoint) {
+    pub fn unblock(&self, endpoint: Address) {
         self.blocked.lock().unwrap().remove(&endpoint);
     }
 
@@ -93,7 +93,7 @@ where Cmd: Debug {
 impl<Cmd> Network for InMemoryNetwork<Cmd> {
     type Cmd = Cmd;
 
-    fn register(&self, member: Endpoint) -> (Receiver<message::Contents<Self::Cmd>>, Sender<Message<Self::Cmd>>) {
+    fn register(&self, member: Address) -> (Receiver<message::Contents<Self::Cmd>>, Sender<Message<Self::Cmd>>) {
         let (send_to_member, member_side_recv) = mpsc::channel();
         let (member_side_send, recv_from_member) = mpsc::channel();
         self.from_members.lock().unwrap().insert(member.clone(), recv_from_member);

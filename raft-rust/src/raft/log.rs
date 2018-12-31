@@ -1,8 +1,8 @@
-use crate::raft::membership::Endpoint;
 use crate::raft::membership::Membership;
 use crate::raft::state::Index;
 use crate::raft::state::Term;
 use std::fmt;
+use crate::raft::membership::NodeId;
 
 // The types of messages that can be appended in the log
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,9 +15,9 @@ pub enum Payload<Cmd> {
     /// The noop contains the end point of the leader who sent it, just to make that information
     /// durable for the term.
     ///
-    /// Note that every log starts at index:0, term:0 with a Noop with an empty endpoint.  So every
+    /// Note that every log starts at index:0, term:0 with a Noop with a dummy node-id.  So every
     /// log implicitly agrees on this initial entry.
-    Noop(Endpoint),
+    Noop(NodeId),
 
     /// A request to change the cluster membership.  See section 6 of the raft paper.
     ChangeMembership(Membership),
@@ -78,10 +78,10 @@ pub trait Log<Cmd> {
     fn term_for(&self, index: Index) -> Term;
 
     /// Return the latest term and who we've voted for in that term, if any
-    fn get_term_info(&self) -> (Term, Option<Endpoint>);
+    fn get_term_info(&self) -> (Term, Option<NodeId>);
 
     /// Durably record the latest term info and who we've voted for in that term
-    fn set_term_info(&mut self, term: Term, member: Option<Endpoint>);
+    fn set_term_info(&mut self, term: Term, member: Option<NodeId>);
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]

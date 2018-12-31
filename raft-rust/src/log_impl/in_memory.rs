@@ -5,7 +5,7 @@ use crate::raft::log::LogEntry;
 use crate::raft::log::LogPosition;
 use crate::raft::log::Payload;
 use crate::raft::log::WrongPreviousEntry;
-use crate::raft::membership::Endpoint;
+use crate::raft::membership::NodeId;
 use crate::raft::state::Index;
 use crate::raft::state::Term;
 
@@ -18,7 +18,7 @@ impl<Cmd> InMemoryLog<Cmd> {
         let mut data = HashMap::new();
         let seed = LogEntry {
             position: LogPosition::default(),
-            payload: Payload::Noop(Endpoint("".to_string())),
+            payload: Payload::Noop(NodeId::default()),
         };
         data.insert(Index::default(), seed);
         Self {
@@ -78,11 +78,11 @@ where Cmd: Clone {
         self.data.get(&index).unwrap().position.1
     }
 
-    fn get_term_info(&self) -> (Term, Option<Endpoint>) {
+    fn get_term_info(&self) -> (Term, Option<NodeId>) {
         (Term::default(), None)
     }
 
-    fn set_term_info(&mut self, _term: Term, _member: Option<Endpoint>) {
+    fn set_term_info(&mut self, _term: Term, _member: Option<NodeId>) {
         ; // we don't save state in this impl
     }
 }

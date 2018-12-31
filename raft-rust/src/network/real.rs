@@ -12,17 +12,17 @@ use std::time::Instant;
 
 use crate::app::Color;
 use crate::network::Network;
-use crate::raft::membership::Endpoint;
+use crate::raft::membership::Address;
 use crate::raft::message;
 use crate::raft::message::AppendAck;
 use crate::raft::message::AppendEntries;
 use crate::raft::message::AppendNack;
+use crate::raft::message::ClientResponder;
+use crate::raft::message::ClientResponse;
 use crate::raft::message::Contents;
 use crate::raft::message::Message;
 use crate::raft::message::RequestVote;
 use crate::raft::message::VoteResponse;
-use crate::raft::message::ClientResponder;
-use crate::raft::message::ClientResponse;
 
 const APPEND_ENTRIES: &'static str = "APP ";
 const     APPEND_ACK: &'static str = "ACK ";
@@ -32,14 +32,14 @@ const  VOTE_RESPONSE: &'static str = "VOT ";
 const        COMMAND: &'static str = "CMD ";
 
 pub struct RealNetwork<Cmd> {
-    endpoint: Endpoint,
+    endpoint: Address,
     send_to_member: Arc<Mutex<Sender<message::Contents<Cmd>>>>,
     recv_from_member: Arc<Mutex<Receiver<Message<Cmd>>>>,
     member_side_recv: Mutex<Option<Receiver<message::Contents<Cmd>>>>,
     member_side_send: Mutex<Option<Sender<Message<Cmd>>>>,
 }
 impl RealNetwork<Color> {
-    pub fn new(endpoint: Endpoint) -> Self {
+    pub fn new(endpoint: Address) -> Self {
         let (send_to_member, member_side_recv) = mpsc::channel();
         let (member_side_send, recv_from_member) = mpsc::channel();
         Self {
@@ -163,7 +163,7 @@ impl RealNetwork<Color> {
 impl<Cmd> Network for RealNetwork<Cmd> {
     type Cmd = Cmd;
 
-    fn register(&self, _member: Endpoint) -> (Receiver<message::Contents<Self::Cmd>>, Sender<Message<Self::Cmd>>) {
+    fn register(&self, _member: Address) -> (Receiver<message::Contents<Self::Cmd>>, Sender<Message<Self::Cmd>>) {
         let member_side_recv = self.member_side_recv.lock().unwrap().take();
         let member_side_send = self.member_side_send.lock().unwrap().take();
         (member_side_recv.unwrap(), member_side_send.unwrap())

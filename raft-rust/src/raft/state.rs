@@ -9,8 +9,8 @@ use crate::raft::app::ApplicationStateMachine;
 use crate::raft::log::Log;
 use crate::raft::log::LogEntry;
 use crate::raft::log::Payload;
-use crate::raft::membership::Endpoint;
 use crate::raft::membership::Membership;
+use crate::raft::membership::NodeId;
 
 pub const HEARTBEAT_TIMEOUT: Duration = ms_to_duration(1000);
 const fn ms_to_duration(amt: u64) -> Duration {
@@ -55,8 +55,8 @@ pub enum Role {
 /// State for the raft leader
 pub struct ExtraLeaderState {
     term: Term,
-    next_index: HashMap<Endpoint, Index>,
-    match_index: HashMap<Endpoint, Index>,
+    next_index: HashMap<NodeId, Index>,
+    match_index: HashMap<NodeId, Index>,
     next_heartbeat_due: Instant,
 }
 impl ExtraLeaderState {
@@ -82,16 +82,16 @@ impl ExtraLeaderState {
         self.next_heartbeat_due = Instant::now() + HEARTBEAT_TIMEOUT;
     }
 
-    pub fn set_next_index_for(&mut self, member: Endpoint, index: Index) {
+    pub fn set_next_index_for(&mut self, member: NodeId, index: Index) {
         self.next_index.insert(member, index);
     }
 
-    pub fn set_match_index_for(&mut self, member: Endpoint, index: Index) {
+    pub fn set_match_index_for(&mut self, member: NodeId, index: Index) {
         self.match_index.insert(member, index);
     }
 
-    pub fn next_index_for(&self, member: &Endpoint) -> Index {
-        self.next_index.get(member).unwrap().clone()
+    pub fn next_index_for(&self, member: NodeId) -> Index {
+        self.next_index.get(&member).unwrap().clone()
     }
 
     /// Sections 5.3 and 5.4: The leader's commit index is the greatest
@@ -110,7 +110,7 @@ impl ExtraLeaderState {
 
 /// State for raft candidates
 pub struct ExtraCandidateState {
-    yes_votes: HashSet<Endpoint>,
+    yes_votes: HashSet<NodeId>,
 }
 impl ExtraCandidateState {
     pub fn new() -> Self {
@@ -119,18 +119,18 @@ impl ExtraCandidateState {
         }
     }
 
-    pub fn yes_votes(&self) -> &HashSet<Endpoint> {
+    pub fn yes_votes(&self) -> &HashSet<NodeId> {
         &self.yes_votes
     }
 
-    pub fn insert_yes_vote(&mut self, voter: Endpoint) {
+    pub fn insert_yes_vote(&mut self, voter: NodeId) {
         self.yes_votes.insert(voter);
     }
 }
 
 pub struct ExtraFollowerState {
     /// Tracks the current leader, if known.  Sometimes this will be unknown, for example if we lose an election.
-    leader: Option<Endpoint>,
+    leader: Option<NodeId>,
 }
 impl ExtraFollowerState {
     pub fn new() -> Self {
@@ -139,23 +139,23 @@ impl ExtraFollowerState {
         }
     }
 
-    pub fn update_leader(&mut self, leader: Endpoint) {
+    pub fn update_leader(&mut self, leader: NodeId) {
         self.leader = Some(leader);
     }
 
-    pub fn leader(&self) -> &Option<Endpoint> {
-        &self.leader
+    pub fn leader(&self) -> Option<NodeId> {
+        self.leader
     }
 }
 
 pub struct RaftState<Log, Application> {
-    myself: Endpoint,
+    myself: NodeId,
     my_role: Role,
     log: Log,
     application: Application,
 
     term: Term,
-    voted_for: Option<Endpoint>,
+    voted_for: Option<NodeId>,
     commit_index: Index,
     last_applied: Index,
     membership: Membership,
@@ -163,7 +163,7 @@ pub struct RaftState<Log, Application> {
 }
 impl<L, A> RaftState<L, A> {
 
-    pub fn new<Cmd>(myself: Endpoint, log: L, application: A, membership: Membership) -> Self
+    pub fn new<Cmd>(myself: NodeId, log: L, application: A, membership: Membership) -> Self
     where L: Log<Cmd>, A: ApplicationStateMachine<Cmd> {
         let (term, voted_for) = log.get_term_info();
         Self {
@@ -181,8 +181,8 @@ impl<L, A> RaftState<L, A> {
         }
     }
 
-    pub fn myself(&self) -> &Endpoint {
-        &self.myself
+    pub fn myself(&self) -> NodeId {
+        self.myself
     }
 
     pub fn my_role(&self) -> &Role {
@@ -205,8 +205,8 @@ impl<L, A> RaftState<L, A> {
         self.term
     }
 
-    pub fn voted_for(&self) -> &Option<Endpoint> {
-        &self.voted_for
+    pub fn voted_for(&self) -> Option<NodeId> {
+        self.voted_for
     }
 
     /// Sets the commit index if the supplied candidate has moved forward.
@@ -244,7 +244,7 @@ impl<L, A> RaftState<L, A> {
         self.membership = new_membership
     }
 
-    pub fn vote_for<Cmd>(&mut self, voted_for: Endpoint) where L: Log<Cmd> {
+    pub fn vote_for<Cmd>(&mut self, voted_for: NodeId) where L: Log<Cmd> {
         assert!(self.voted_for.is_none() || Some(&voted_for) == self.voted_for.as_ref(), "invariant violation: changing vote for term");
         self.voted_for = Some(voted_for);
         self.log.set_term_info(self.term, self.voted_for.clone());

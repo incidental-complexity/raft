@@ -1,4 +1,3 @@
-use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::time::Duration;
 use std::time::Instant;
@@ -11,13 +10,15 @@ use crate::app::piclient::PiClient;
 use crate::app::piclient::SenseHat;
 use crate::log_impl::in_memory::InMemoryLog;
 use crate::network::in_memory::InMemoryNetwork;
-use crate::raft::membership::Endpoint;
 use crate::raft::membership::Membership;
 use crate::raft::message::Message;
 use crate::startup::server::setup_node;
 use crate::raft::message;
 use crate::raft::message::ClientResponder;
 use crate::raft::message::ClientResponse;
+use crate::raft::membership::Address;
+use std::collections::HashMap;
+use crate::raft::membership::NodeId;
 
 pub struct PrintlnResponder;
 impl ClientResponder for PrintlnResponder {
@@ -39,18 +40,18 @@ pub fn run_for_a_while() {
     let pi_addr: SocketAddr = "10.0.1.2:12345".parse().expect("cannot parse pi addr");
     let sense_hat = SenseHat(pi_addr);
 
-    let endpoint1 = Endpoint("127.0.0.1:10001".to_string());
-    let endpoint2 = Endpoint("127.0.0.1:10002".to_string());
-    let endpoint3 = Endpoint("127.0.0.1:10003".to_string());
-    let mut members = HashSet::new();
-    members.insert(endpoint1.clone());
-    members.insert(endpoint2.clone());
-    members.insert(endpoint3.clone());
+    let endpoint1 = Address("127.0.0.1:10001".to_string());
+    let endpoint2 = Address("127.0.0.1:10002".to_string());
+    let endpoint3 = Address("127.0.0.1:10003".to_string());
+    let mut members = HashMap::new();
+    members.insert(NodeId(1), endpoint1.clone());
+    members.insert(NodeId(2), endpoint2.clone());
+    members.insert(NodeId(3), endpoint3.clone());
     let membership = Membership::Stable(members.clone());
 
-    setup_node(endpoint1, membership.clone(), &network, ColorStateMachine::new(PiClient::new(1, (0, 2), sense_hat)), InMemoryLog::new());
-    setup_node(endpoint2, membership.clone(), &network, ColorStateMachine::new(PiClient::new(2, (1, 2), sense_hat)), InMemoryLog::new());
-    setup_node(endpoint3, membership.clone(), &network, ColorStateMachine::new(PiClient::new(3, (2, 2), sense_hat)), InMemoryLog::new());
+    setup_node(NodeId(1), membership.clone(), &network, ColorStateMachine::new(PiClient::new(1, (0, 2), sense_hat)), InMemoryLog::new());
+    setup_node(NodeId(2), membership.clone(), &network, ColorStateMachine::new(PiClient::new(2, (1, 2), sense_hat)), InMemoryLog::new());
+    setup_node(NodeId(3), membership.clone(), &network, ColorStateMachine::new(PiClient::new(3, (2, 2), sense_hat)), InMemoryLog::new());
 
     // ==========================================
     // Drive the test cluster.  Send commands and
@@ -64,7 +65,7 @@ pub fn run_for_a_while() {
     let mut rng = rand::thread_rng();
     while start.elapsed() < Duration::from_secs(300) {
 
-        let member_list = membership.as_set().iter().map(|ep| ep.clone() ).collect::<Vec<Endpoint>>();
+        let member_list = membership.as_set().iter().map(|id| membership.address_of(*id).unwrap().clone() ).collect::<Vec<Address>>();
         network.process_some();
 
         // sometimes block or unblock nodes
