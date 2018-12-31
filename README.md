@@ -35,7 +35,7 @@ xxxxxxxx
 Indicates that node 3 is the leader.
 
 ## Inter-node messages
-The Raft participants can send messages to each other with the following format, which is generally JSON preceded by a verb:
+The Raft participants can send messages to each other with the following format, which is generally JSON preceded by a verb.  Note that anywhere a node is referenced (candidate, voter, leader, sender), it is via their node id, which is a 64 bit unsigned number.
 
 #### Command
 Set color to `(r,g,b)=(1,2,3)`:
@@ -46,13 +46,13 @@ CMD [1, 2, 3]
 #### RequestVote
 Example (note last_position is an array of `[index, term]`:
 ```
-REQ {"term":1,"candidate":"127.0.0.4:10001","last_position":[0,0]}
+REQ {"term":1,"candidate":1,"last_position":[0,0]}
 ```
 
 #### VoteResponse
 Example:
 ```
-VOT {"term":1,"voter":"127.0.0.3:10001","candidate":"127.0.0.4:10001","vote":"Grant"}
+VOT {"term":1,"voter":2,"candidate":1,"vote":"Grant"}
 ```
 
 #### AppendEntries
@@ -60,25 +60,25 @@ Example:
 * Note that previous_position is `[index, term]` and position is `[index, term]`
 * Note that the command in change state is our color command, and looks like `[r,g,b]`
 ```
-APP {"term":1,"leader":"127.0.0.4:10001","previous_position":[0,0],"commit_index":0,"entries":[{"position":[1,1],"payload":{"Noop":"127.0.0.4:10001"}},{"position":[2,1],"payload":{"ChangeState":[1,2,3]}}]}
+APP {"term":1,"leader":1,"previous_position":[0,0],"commit_index":0,"entries":[{"position":[1,1],"payload":{"Noop":1}},{"position":[2,1],"payload":{"ChangeState":[1,2,3]}}]}
 ```
 
 #### AppendAck
 ```
-ACK [sender,[new_latest_index,new_latest_term]]
+ACK [sender_id,[new_latest_index,new_latest_term]]
 ```
 Example:
 ```
-ACK ["127.0.0.3:10001",[2,1]]
+ACK [2,[2,1]]
 ```
 
 #### AppendNack
 ```
-NCK [term_of_sender, prev_index_from_append_msg, sender]
+NCK [term_of_sender, prev_index_from_append_msg, sender_id]
 ```
 Example:
 ```
-NCK [2, 1, "127.0.0.3:10001"]
+NCK [2, 1, 3]
 ```
 
 # Discovery
