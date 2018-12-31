@@ -34,7 +34,7 @@ xxxxxxxx
 
 Indicates that node 3 is the leader.
 
-## Inter-cluster messages
+## Inter-node messages
 The Raft participants can send messages to each other with the following format, which is generally JSON preceded by a verb:
 
 #### Command
