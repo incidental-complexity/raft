@@ -13,18 +13,18 @@ use crate::raft::log::Log;
 use crate::raft::log::LogEntry;
 use crate::raft::log::LogPosition;
 use crate::raft::log::Payload;
-use crate::raft::membership::Endpoint;
+use crate::raft::membership::NodeId;
 use crate::raft::message::AppendAck;
 use crate::raft::message::AppendEntries;
 use crate::raft::message::AppendNack;
+use crate::raft::message::ClientResponder;
+use crate::raft::message::ClientResponse;
 use crate::raft::message::Message;
 use crate::raft::message::RequestVote;
 use crate::raft::message::Vote;
 use crate::raft::message::VoteResponse;
 use crate::raft::state::RaftState;
 use crate::raft::state::Role;
-use crate::raft::message::ClientResponder;
-use crate::raft::message::ClientResponse;
 
 pub mod app;
 pub mod message;
@@ -84,13 +84,15 @@ where L: log::Log<C> {
     let last_position = state.log().last();
     let request_vote = RequestVote {
         term: state.term(),
-        candidate: state.myself().clone(),
+        candidate: state.myself(),
         last_position,
     };
 
     state.membership().as_set().iter().for_each(|member| {
-        if member != state.myself() {
-            sender.send(Message(member.clone(), message::Contents::RequestVote(request_vote.clone()))).unwrap();
+        if *member != state.myself() {
+            if let Some(addr) = state.membership().address_of(*member) {
+                sender.send(Message(addr.clone(), message::Contents::RequestVote(request_vote))).unwrap();
+            }
         }
     });
 
@@ -123,7 +125,7 @@ where Log: log::Log<Cmd> {
 
         let already_voted_for_someone_else = match state.voted_for() {
             None => false,
-            Some(candidate) => *candidate != request_vote.candidate,
+            Some(candidate) => candidate != request_vote.candidate,
         };
 
         match already_voted_for_someone_else {
@@ -136,7 +138,7 @@ where Log: log::Log<Cmd> {
 
                 // the definition of a log being up to date is defined in section 5.4.1
                 if candidate_last_position.is_up_to_date(my_last_position) {
-                    state.vote_for(request_vote.candidate.clone());
+                    state.vote_for(request_vote.candidate);
                     Vote::Grant
                 } else {
                     Vote::Deny
@@ -150,19 +152,22 @@ where Log: log::Log<Cmd> {
     // the vote_result will be a denial.
     let vote_response = VoteResponse{
         term: state.term(),
-        voter: state.myself().clone(),
-        candidate: request_vote.candidate.clone(),
+        voter: state.myself(),
+        candidate: request_vote.candidate,
         vote
     };
-    let outbound_message = Message(request_vote.candidate, message::Contents::VoteResponse(vote_response));
-    sender.send(outbound_message).unwrap();
+
+    if let Some(addr) = state.membership().address_of(request_vote.candidate ) {
+        let outbound_message = Message(addr.clone(), message::Contents::VoteResponse(vote_response));
+        sender.send(outbound_message).unwrap();
+    }
 }
 
 pub fn handle_vote_response<C, L, A>(
     vote_response: VoteResponse, state: &mut RaftState<L, A>, sender: &Sender<Message<C>>)
 where L: Log<C>, A: ApplicationStateMachine<C> {
 
-    assert_eq!(vote_response.candidate, *state.myself(), "received vote response for someone else?");
+    assert_eq!(vote_response.candidate, state.myself(), "received vote response for someone else?");
 
     // See section 5.1: if a message has a larger term, adopt that term and become a follower
     // not sure how we'd get a vote_response for a larger term than we sent the vote for
@@ -170,8 +175,14 @@ where L: Log<C>, A: ApplicationStateMachine<C> {
         state.turn_into_follower(vote_response.term);
     }
 
+    // in case there's any weird edge cases around a node going offline and coming
+    // back as someone else in the middle of a vote
+    if vote_response.candidate != state.myself() {
+        return;
+    }
+
     if state.is_candidate() && state.term() == vote_response.term && vote_response.vote == Vote::Grant {
-        state.candidate_state_mut().insert_yes_vote(vote_response.voter.clone());
+        state.candidate_state_mut().insert_yes_vote(vote_response.voter);
         if state.candidate_has_won_election() {
             state.turn_into_leader();
 
@@ -179,7 +190,7 @@ where L: Log<C>, A: ApplicationStateMachine<C> {
             let last = state.log().last();
             let entry = LogEntry {
                 position: LogPosition(last.0.next(), state.term()),
-                payload: Payload::Noop(state.myself().clone()),
+                payload: Payload::Noop(state.myself()),
             };
             state.log_mut().append_if(vec![entry], last).expect("leader should be able to append noop");
 
@@ -191,17 +202,20 @@ where L: Log<C>, A: ApplicationStateMachine<C> {
 
 /// Sends the appropriate list of log entries to the specified member.  This is called by leaders, and
 /// figures out exactly what needs to be sent to the recipient of interest.
-fn transmit_log<C, L, A>(to: Endpoint, state: &mut RaftState<L, A>, sender: &Sender<Message<C>>)
+fn transmit_log<C, L, A>(to: NodeId, state: &mut RaftState<L, A>, sender: &Sender<Message<C>>)
 where L: Log<C> {
-    if to != *state.myself() {
+    let maybe_addr = state.membership().address_of(to);
+    if to != state.myself() && maybe_addr.is_some() {
+        let addr = maybe_addr.unwrap().clone();
+
         let mut entries = Vec::new();
-        let start_index = state.leader_state().next_index_for(&to);
+        let start_index = state.leader_state().next_index_for(to);
         state.log().scan(start_index, None, &mut |entry: LogEntry<C>| entries.push(entry));
         let prev_pos = LogPosition(start_index.prev(), state.log().term_for(start_index.prev()));
         let commit_index = state.commit_index();
 
-        let msg = AppendEntries::new(state.term(), state.myself().clone(), prev_pos, commit_index, entries);
-        let outbound = Message(to, message::Contents::AppendEntries(msg));
+        let msg = AppendEntries::new(state.term(), state.myself(), prev_pos, commit_index, entries);
+        let outbound = Message(addr, message::Contents::AppendEntries(msg));
         sender.send(outbound).unwrap();
     }
 }
@@ -210,7 +224,7 @@ where L: Log<C> {
 pub fn broadcast_log<C, L, A>( state: &mut RaftState<L, A>, sender: &Sender<Message<C>>)
 where L: Log<C> {
     // append to all
-    state.membership().as_set().iter().for_each(|member| transmit_log(member.clone(), state, sender));
+    state.membership().as_set().iter().for_each(|member| transmit_log(*member, state, sender));
 
     // reset the heartbeat timer.  this should happen every time we broadcast to all
     state.leader_state_mut().reset_heartbeat_timeout();
@@ -244,7 +258,7 @@ where L: Log<C>, A: ApplicationStateMachine<C> {
     assert_eq!(state.term(), append_entries.term);
 
     // also if we're here, the sender is the leader, so we'll mark it
-    state.follower_state_mut().update_leader(append_entries.leader.clone());
+    state.follower_state_mut().update_leader(append_entries.leader);
 
     let result = state.log_mut().append_if(append_entries.entries, append_entries.previous_position);
     let contents = match result {
@@ -254,11 +268,24 @@ where L: Log<C>, A: ApplicationStateMachine<C> {
             // specifically discussed in the paper, but it's implied in Figure 2's ordering of receiver implementation.
             state.maybe_set_commit_index(append_entries.commit_index);
             state.apply_commands();
-            message::Contents::AppendAck(AppendAck(state.myself().clone(), new_latest_position))
+            message::Contents::AppendAck(AppendAck(state.myself(), new_latest_position))
         },
-        Err(_) => message::Contents::AppendNack(AppendNack(state.term(), append_entries.previous_position.0, state.myself().clone())),
+        Err(_) => message::Contents::AppendNack(AppendNack(state.term(), append_entries.previous_position.0, state.myself())),
     };
-    sender.send(Message(append_entries.leader, contents)).unwrap();
+
+    /*
+     * TODO
+     * Will this work in the case of a membership change when the leader is in the old group?
+     * In that case their last role as the leader is to commit the new membership with only the
+     * new group, then they give up leadership.  But here, that will only be able to succeed on
+     * the new group.  The old group won't have the leader's address to ACK back, and the leader
+     * can't consider the closing of the old membership committed until it hears back from everyone.
+     * Perhaps the responses back should be based off the return address in the message rather
+     * than the membership.
+     */
+    if let Some(addr) = state.membership().address_of(append_entries.leader) {
+        sender.send(Message(addr.clone(), contents)).unwrap();
+    }
 
     // since we're here, whether or not we actually successfully appended anything, we at least have heard
     // from the leader.   so let's do some housekeeping:
@@ -278,7 +305,7 @@ pub fn handle_append_ack<C, L, A>(command_ack: AppendAck, state: &mut RaftState<
     let index = (command_ack.1).0;
 
     // upon success, we'll do some housekeeping
-    state.leader_state_mut().set_next_index_for(command_ack.0.clone(), index.next());
+    state.leader_state_mut().set_next_index_for(command_ack.0, index.next());
     state.leader_state_mut().set_match_index_for(command_ack.0, index);
 
     // maybe we have enough to update our commit index
@@ -310,7 +337,7 @@ where L: Log<C> {
     // TODO past could end up resetting the members state.  It wouldn't be incorrect to send the state back in time like
     // TODO this, but it's sub-optimal.
     // We set the next index to the index in the nack, which is the previous to the one that we sent
-    state.leader_state_mut().set_next_index_for(command_nack.2.clone(), command_nack.1);
+    state.leader_state_mut().set_next_index_for(command_nack.2, command_nack.1);
 
     // now since we know the recipient rejected our last message, let's retry immediately with the newer index
     // if they reject that, we'll decrement the index and retry again.  Eventually we'll succeed (since everyone
@@ -347,8 +374,8 @@ where L: Log<C> {
             state.log_mut().append_if(vec![entry], last).expect("leader should be able to append command to log");
 
             // we automatically ack this entry
-            let myself = state.myself().clone();
-            state.leader_state_mut().set_next_index_for(myself.clone(), next.next());
+            let myself = state.myself();
+            state.leader_state_mut().set_next_index_for(myself, next.next());
             state.leader_state_mut().set_match_index_for(myself, next);
 
             broadcast_log(state, sender);
@@ -358,7 +385,7 @@ where L: Log<C> {
         },
         Role::Follower(extra_follower_state) => {
             match extra_follower_state.leader() {
-                Some(leader) => responder.respond(ClientResponse::Redirect(leader.clone())),
+                Some(leader) => responder.respond(ClientResponse::Redirect(leader)),
                 None => responder.respond(ClientResponse::UnknownLeader),
             }
         },

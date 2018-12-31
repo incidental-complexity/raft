@@ -3,15 +3,16 @@ use std::fmt::Debug;
 
 use crate::raft::log::LogEntry;
 use crate::raft::log::LogPosition;
-use crate::raft::membership::Endpoint;
+use crate::raft::membership::Address;
+use crate::raft::membership::NodeId;
 use crate::raft::state::Index;
 use crate::raft::state::Term;
 
 // -----------------------------
 // REQUEST_VOTE struct
 // -----------------------------
-#[derive(Eq, PartialEq, Clone, Debug, Serialize, Deserialize)]
-pub struct RequestVote{ pub term: Term, pub candidate: Endpoint, pub last_position: LogPosition }
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub struct RequestVote{ pub term: Term, pub candidate: NodeId, pub last_position: LogPosition }
 
 // -----------------------------
 // VOTE_RESPONSE struct
@@ -19,7 +20,7 @@ pub struct RequestVote{ pub term: Term, pub candidate: Endpoint, pub last_positi
 #[derive(Eq, PartialEq, Debug, Serialize, Deserialize)]
 pub enum Vote { Grant, Deny }
 #[derive(Debug, Serialize, Deserialize)]
-pub struct VoteResponse{ pub term: Term, pub voter: Endpoint, pub candidate: Endpoint, pub vote: Vote }
+pub struct VoteResponse{ pub term: Term, pub voter: NodeId, pub candidate: NodeId, pub vote: Vote }
 
 // -----------------------------
 // APPEND_ENTRIES struct
@@ -27,7 +28,7 @@ pub struct VoteResponse{ pub term: Term, pub voter: Endpoint, pub candidate: End
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AppendEntries<Cmd> {
     pub term: Term,
-    pub leader: Endpoint,
+    pub leader: NodeId,
     pub previous_position: LogPosition,
     pub commit_index: Index,
 
@@ -35,7 +36,7 @@ pub struct AppendEntries<Cmd> {
     pub entries: Vec<LogEntry<Cmd>>,
 }
 impl<Cmd> AppendEntries<Cmd> {
-    pub fn new(term: Term, leader: Endpoint, previous_position: LogPosition, commit_index: Index, entries: Vec<LogEntry<Cmd>>) -> Self {
+    pub fn new(term: Term, leader: NodeId, previous_position: LogPosition, commit_index: Index, entries: Vec<LogEntry<Cmd>>) -> Self {
         Self {
             term,
             leader,
@@ -49,7 +50,7 @@ impl<Cmd> AppendEntries<Cmd> {
 /// An ack that contains the latest position of the log after the apply succeeded
 /// (Sender, LogPosition)
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AppendAck(pub Endpoint, pub LogPosition);
+pub struct AppendAck(pub NodeId, pub LogPosition);
 
 /// An negative acknowledgement that indicates the term in which the AppendEntries was sent,
 /// as well as the index that was requested in the AppendEntries previous log position.  These
@@ -62,7 +63,7 @@ pub struct AppendAck(pub Endpoint, pub LogPosition);
 ///
 /// (Term, Index, Sender)
 #[derive(Debug, Serialize, Deserialize)]
-pub struct AppendNack(pub Term, pub Index, pub Endpoint);
+pub struct AppendNack(pub Term, pub Index, pub NodeId);
 
 // -----------------------------
 // MESSAGE enum
@@ -91,11 +92,11 @@ impl<Cmd: Debug> fmt::Debug for Contents<Cmd> {
     }
 }
 
-pub struct Message<Cmd>(pub Endpoint, pub Contents<Cmd>);
+pub struct Message<Cmd>(pub Address, pub Contents<Cmd>);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ClientResponse {
-    Redirect(Endpoint),
+    Redirect(NodeId),
     UnknownLeader,
     Received(LogPosition),
 }
