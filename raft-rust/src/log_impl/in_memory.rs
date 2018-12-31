@@ -46,8 +46,10 @@ where Cmd: Clone {
         // first clear out everything starting at the log position
         self.data.retain(|idx, _| idx <= &prev.0 );
 
+        // we know the latest position is `prev` at this point because of the above checks/clear
+        let mut latest_position = prev;
+
         // TODO check to make sure entries are correct before inserting them
-        let mut latest_position = self.last();
         for entry in entries {
             latest_position = entry.position;
             self.data.insert(entry.position.0.clone(), entry);
