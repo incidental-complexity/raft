@@ -7,18 +7,19 @@ use std::fmt;
 // The types of messages that can be appended in the log
 #[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Payload<Cmd> {
-    /// used for the first entry ever in a log, at position (0, 0).
-    Seed,
+    /// A noop is a message from a leader that creates a log entry in the leader's term with
+    /// no side effects.  These are necessary immediately after a new Term for correctness,
+    /// otherwise it's possible for entries to be committed by other leaders during untimely
+    /// crashes.  See section 5.4.2 and Figure 8 of the raft paper.
+    ///
+    /// The noop contains the end point of the leader who sent it, just to make that information
+    /// durable for the term.
+    ///
+    /// Note that every log starts at index:0, term:0 with a Noop with an empty endpoint.  So every
+    /// log implicitly agrees on this initial entry.
+    Noop(Endpoint),
 
-    /// A noop is a message from a leader that serves to renew the lease on the leadership
-    /// role.  Think of it as a heartbeat.  Heartbeats are necessary immediately after a
-    /// new Term, and then on an ongoing basis if there is a lack of other messages (which
-    /// themselves can double as heartbeats).  Heartbeats contain the endpoint that is heartbeating,
-    /// just for the heck of it.  Gives us a way to see who is leader since every term is guaranteed
-    /// to have at least one heartbeat (the leader sends a heartbeat at the beginning of the term).
-    Heartbeat(Endpoint),
-
-    /// A request to change the cluster membership.
+    /// A request to change the cluster membership.  See section 6 of the raft paper.
     ChangeMembership(Membership),
 
     /// A state change.  The actual state depends on the problem domain that raft is being applied to.
@@ -28,8 +29,7 @@ pub enum Payload<Cmd> {
 impl<Cmd: fmt::Debug> fmt::Debug for Payload<Cmd> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            Payload::Seed => write!(f, "Payload::Seed"),
-            Payload::Heartbeat(leader) => write!(f, "Payload::Heartbeat({:?})", leader),
+            Payload::Noop(leader) => write!(f, "Payload::Noop({:?})", leader),
             Payload::ChangeMembership(membership) => write!(f, "Payload::ChangeMembership({:?})", membership),
             Payload::ChangeState(cmd) => write!(f, "Payload::ChangeState({:?})", cmd),
         }

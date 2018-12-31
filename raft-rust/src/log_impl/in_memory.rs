@@ -18,7 +18,7 @@ impl<Cmd> InMemoryLog<Cmd> {
         let mut data = HashMap::new();
         let seed = LogEntry {
             position: LogPosition::default(),
-            payload: Payload::Seed,
+            payload: Payload::Noop(Endpoint("".to_string())),
         };
         data.insert(Index::default(), seed);
         Self {
@@ -47,7 +47,7 @@ where Cmd: Clone {
         self.data.retain(|idx, _| idx <= &prev.0 );
 
         // TODO check to make sure entries are correct before inserting them
-        let mut latest_position = LogPosition(Index::default(), Term::default());
+        let mut latest_position = self.last();
         for entry in entries {
             latest_position = entry.position;
             self.data.insert(entry.position.0.clone(), entry);

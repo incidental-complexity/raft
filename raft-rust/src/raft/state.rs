@@ -371,8 +371,7 @@ impl<L, A> RaftState<L, A> {
 
             // apply the record
             match entry.payload {
-                Payload::Seed => (),
-                Payload::Heartbeat(_) => (),
+                Payload::Noop(_) => (),
                 Payload::ChangeMembership(_) => (),
                 Payload::ChangeState(command) => {Some(app.apply(command));},
             };

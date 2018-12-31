@@ -59,18 +59,10 @@ where Log: log::Log<Cmd>, Application: ApplicationStateMachine<Cmd> {
     match state.my_role() {
         Role::Leader(leader_state) => {
             if leader_state.is_past_heartbeat_timeout() {
-                heartbeat(state, sender);
+                broadcast_log(state, sender);  // heartbeat.  will send empty entries to caught up followers.
             }
 
-            // TODO consider logic like:
-            // if leader_state.is_past_ack_timeout() {
-            //     state.turn_into_follower();
-            // }
-            //
-            // Otherwise a separated leader will continue to fill its log with heartbeats that never get ACK'd.
-            // This will get trimmed away when it rejoins the cluster, but seems sub-optimal.
-            //
-            // Also a leader could accumulate too many outstanding requests it's waiting to acknowledge.
+            // TODO consider having leaders turn_into_follower if it's been too long since a commit
         },
         Role::Follower(_) => {
             if state.is_past_election_timeout() {
@@ -182,7 +174,17 @@ where L: Log<C>, A: ApplicationStateMachine<C> {
         state.candidate_state_mut().insert_yes_vote(vote_response.voter.clone());
         if state.candidate_has_won_election() {
             state.turn_into_leader();
-            heartbeat(state, sender);
+
+            // create a noop entry, first thing after gaining leadership
+            let last = state.log().last();
+            let entry = LogEntry {
+                position: LogPosition(last.0.next(), state.term()),
+                payload: Payload::Noop(state.myself().clone()),
+            };
+            state.log_mut().append_if(vec![entry], last).expect("leader should be able to append noop");
+
+            broadcast_log(state, sender);
+
         }
     }
 }
@@ -212,20 +214,6 @@ where L: Log<C> {
 
     // reset the heartbeat timer.  this should happen every time we broadcast to all
     state.leader_state_mut().reset_heartbeat_timeout();
-}
-
-pub fn heartbeat<C, L, A>( state: &mut RaftState<L, A>, sender: &Sender<Message<C>>)
-where L: Log<C> {
-
-    // create a heartbeat entry
-    let last = state.log().last();
-    let entry = LogEntry {
-        position: LogPosition(last.0.next(), state.term()),
-        payload: Payload::Heartbeat(state.myself().clone()),
-    };
-    state.log_mut().append_if(vec![entry], last).expect("leader should be able to append heartbeat");
-
-    broadcast_log(state, sender);
 }
 
 pub fn handle_append_entries<C, L, A>(
