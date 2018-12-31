@@ -113,7 +113,7 @@ pub mod tests {
         map.insert(NodeId(3), a3);
         let membership = Membership::Stable(map);
 
-        set = HashSet::new();
+        let mut set = HashSet::new();
         set.insert(NodeId(1));
         assert!(!membership.is_majority(&set));
 
