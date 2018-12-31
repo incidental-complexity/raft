@@ -1,11 +1,44 @@
-<project name="raft-java" default="dist" basedir=".">
+<project name="raft-java" default="dist" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
   <description> build script for java raft </description>
 
   <!-- set global properties for this build -->
   <property name="src.dir" location="src"/>
+  <property name="test.dir" location="tst"/>
   <property name="build.dir" location="build"/>
   <property name="dist.dir" location="dist"/>
   <property name="lib.dir"  location="lib"/>
+
+  <!-- Ivy stuff -->
+  <property name="ivy.install.version" value="2.5.0-rc1"/>
+  <condition property="ivy.home" value="${env.IVY_HOME}">
+      <isset property="env.IVY_HOME"/>
+  </condition>
+  <property name="ivy.home" value="${user.home}/.ant"/>
+  <property name="ivy.jar.dir" value="${ivy.home}/lib"/>
+  <property name="ivy.jar.file" value="${ivy.jar.dir}/ivy.jar"/>
+
+  <available classname="org.apache.ivy.Main" property="ivy.installed"/>
+
+  <target name="download-ivy" unless="ivy.installed">
+
+    <mkdir dir="${ivy.jar.dir}"/>
+    <!-- download Ivy from web site so that it can be used even without any special installation -->
+    <get src="https://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.install.version}/ivy-${ivy.install.version}.jar"
+         dest="${ivy.jar.file}" usetimestamp="true"/>
+  </target>
+
+  <target name="init-ivy" depends="download-ivy">
+    <!-- try to load Ivy here from Ivy home, in case the user has not already dropped
+         it into Ant's lib dir (note that the latter copy will always take precedence).
+         We will not fail as long as local lib dir exists (it may be empty) and
+         Ivy is in at least one of Ant's lib dir or the local lib dir. -->
+    <path id="ivy.lib.path">
+      <fileset dir="${ivy.jar.dir}" includes="*.jar"/>
+    </path>
+    <taskdef resource="org/apache/ivy/ant/antlib.xml" uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
+  </target>
+
+  <!-- Ivy stuff -->
 
   <!-- setup classpath -->
   <path id="libraries.path">   
@@ -13,6 +46,10 @@
           <include name="*.jar"/>
       </fileset>
   </path>
+  <target name="resolve" depends="init-ivy" description="resolve dependencies with ivy">
+      <ivy:resolve />
+      <ivy:cachepath pathid="ivy.classpath" />
+  </target>
 
   <!-- Create the build directory structure used by compile -->
   <target name="init">
@@ -20,10 +57,34 @@
     <mkdir dir="${build.dir}"/>
   </target>
 
+  <path id="classpath.test">
+    <pathelement path="${build.dir}"/>
+    <path refid="ivy.classpath"/>
+  </path>
+
+  <target name="test-compile" depends="compile">
+    <javac srcdir="${test.dir}" destdir="${build.dir}" includeantruntime="false">
+        <classpath refid="classpath.test"/>
+    </javac>
+  </target>
+
+  <target name="test" depends="test-compile">
+    <junit printsummary="on" haltonfailure="yes" fork="true">
+        <classpath>
+          <path refid="classpath.test"/>
+          <pathelement location="${build.dir}"/>
+        </classpath>
+        <formatter type="brief" usefile="false" />
+        <batchtest>
+            <fileset dir="${test.dir}" includes="**/*Test.java" />
+        </batchtest>
+    </junit>
+  </target>
+
   <!-- Compile the Java code from ${src.dir} into ${build.dir} -->
-  <target name="compile" depends="init" description="compile the source">
-    <javac srcdir="${src.dir}" destdir="${build.dir}">
-        <classpath refid="libraries.path"/>
+  <target name="compile" depends="init,resolve" description="compile the source">
+    <javac srcdir="${src.dir}" destdir="${build.dir}" includeantruntime="false">
+        <classpath refid="ivy.classpath"/>
     </javac>
   </target>
 
@@ -33,8 +94,8 @@
     <mkdir dir="${dist.dir}/${lib.dir}"/>
 
     <!-- TODO not sure this will actually work when it comes time to link a jar -->
-    <manifestclasspath property="manifest.classpath" jarfile="${dist.dir}/${ant.project.name}.jar}">
-        <classpath refid="libraries.path"/>
+    <manifestclasspath property="manifest.classpath" jarfile="${dist.dir}/${ant.project.name}.jar}" maxParentLevels="10">
+        <classpath refid="ivy.classpath"/>
     </manifestclasspath>
 
     <copy todir="${dist.dir}/${lib.dir}" flatten="true">
@@ -54,7 +115,7 @@
     <delete dir="${dist.dir}"/>
   </target>
 
-  <target name="run" depends="dist">
+  <target name="run" depends="clean, dist">
     <java jar="${dist.dir}/${ant.project.name}.jar" fork="true"/>
   </target>
 </project>
