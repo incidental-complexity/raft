@@ -3,7 +3,6 @@ This project is serving a few main goals.
 1. play around with [Raft](https://raft.github.io/).
 2. play around with languages.  
 3. play around with raspberry pi.
-4. play around with wire protocols (stretch goal)
 
 The idea here is to build basic Raft implementations in various languages, perhaps some day having the different implementations actually cooperate in a single heterogenous Raft cluster.
 
@@ -61,7 +60,7 @@ Example:
 * Note that previous_position is `[index, term]` and position is `[index, term]`
 * Note that the command in change state is our color command, and looks like `[r,g,b]`
 ```
-APP {"term":1,"leader":"127.0.0.4:10001","previous_position":[0,0],"commit_index":0,"entries":[{"position":[1,1],"payload":{"Heartbeat":"127.0.0.4:10001"}},{"position":[2,1],"payload":{"ChangeState":[1,2,3]}}]}
+APP {"term":1,"leader":"127.0.0.4:10001","previous_position":[0,0],"commit_index":0,"entries":[{"position":[1,1],"payload":{"Noop":"127.0.0.4:10001"}},{"position":[2,1],"payload":{"ChangeState":[1,2,3]}}]}
 ```
 
 #### AppendAck
